@@ -832,12 +832,48 @@ body.dark .mood-inner{background:#1A1118}
 .sp-music-btn{position:fixed;top:16px;right:16px;z-index:100002;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.5);font-size:14px;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center}
 .sp-music-btn:hover{background:rgba(255,255,255,.12);color:#fff}
 .sp-music-btn.playing{color:#C2476B;border-color:rgba(194,71,107,.4)}
+
+/* ─── SCORE BADGE (persistent) ─── */
+.sp-score-badge{position:fixed;top:14px;left:14px;z-index:100002;background:linear-gradient(135deg,rgba(194,71,107,.18),rgba(184,149,90,.18));backdrop-filter:blur(8px);border:1px solid rgba(194,71,107,.3);border-radius:24px;padding:8px 16px;font-family:'DM Sans',sans-serif;font-size:12px;color:#fff;display:none;gap:10px;align-items:center;font-weight:500;letter-spacing:.02em;box-shadow:0 4px 14px rgba(0,0,0,.2);transition:transform .3s,box-shadow .3s}
+.sp-score-badge.on{display:flex}
+.sp-score-badge:hover{transform:scale(1.05)}
+.sp-score-badge.bump{animation:scoreBump .5s ease}
+@keyframes scoreBump{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}
+.sp-score-num{color:#F5D0DC;font-weight:500;font-family:'Playfair Display',serif;font-style:italic;font-size:14px}
+.sp-score-eggs{color:#B8955A;font-size:11px;border-left:1px solid rgba(255,255,255,.15);padding-left:10px;margin-left:2px}
+
+/* ─── EASTER EGG (clickable hidden element) ─── */
+.sp-egg{cursor:pointer;display:inline-block;transition:all .2s;user-select:none;color:inherit;position:relative}
+.sp-egg.found{color:#C2476B;animation:eggPop .5s}
+@keyframes eggPop{0%{transform:scale(1)}50%{transform:scale(1.6) rotate(20deg)}100%{transform:scale(1) rotate(0)}}
+
+/* ─── EGG TOAST ─── */
+.sp-egg-toast{position:fixed;top:60px;right:14px;z-index:300;background:linear-gradient(135deg,#C2476B,#B8955A);color:#fff;padding:14px 18px;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:13px;box-shadow:0 12px 40px rgba(194,71,107,.4);transform:translateX(400px);transition:transform .4s ease;max-width:280px;line-height:1.4}
+.sp-egg-toast.on{transform:translateX(0)}
+
+/* ─── ROUND 2 STATES ─── */
+.sp-round-banner{background:linear-gradient(135deg,rgba(194,71,107,.15),rgba(184,149,90,.15));border:1px solid rgba(194,71,107,.3);border-radius:10px;padding:12px 16px;margin:12px 0;text-align:center;font-size:13px;color:#F5D0DC;font-family:'DM Sans',sans-serif;font-style:italic;animation:fadeInUp .5s ease}
+
+/* ─── YEAR PICKER ─── */
+.sp-year-pick{display:flex;gap:8px;justify-content:center;margin:14px 0;flex-wrap:wrap}
+.sp-year-btn{padding:10px 22px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:24px;color:#fff;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;transition:all .2s}
+.sp-year-btn:hover{background:rgba(194,71,107,.2);border-color:#C2476B}
+.sp-year-btn.correct{background:rgba(74,124,89,.3);border-color:#4A7C59;color:#A8D9B4}
+.sp-year-btn.wrong{background:rgba(194,71,107,.3);border-color:#C2476B}
+
+/* ─── BONUS UNLOCK ─── */
+.sp-bonus-unlocked{background:linear-gradient(135deg,rgba(184,149,90,.3),rgba(139,107,63,.3));border-radius:10px;padding:10px 14px;margin-top:10px;color:#F5D0DC;font-size:12px;text-align:center;font-style:italic;animation:fadeInUp .4s ease;border:1px solid rgba(184,149,90,.5)}
+@keyframes pulse{0%,100%{opacity:.15}50%{opacity:.5}}
 </style>
 
 <!-- SPOILER WALL -->
 <div id="spoiler-wall">
   <div class="sp-bg-hearts" id="sp-hearts"></div>
   <button class="sp-music-btn" id="sp-music-btn" onclick="toggleSpMusic()" title="Música">♪</button>
+  <div class="sp-score-badge" id="sp-score-badge" onclick="window.openScorePanel()">
+    <span>✨ <span class="sp-score-num" id="sp-score-num">0</span></span>
+    <span class="sp-score-eggs">🥚 <span id="sp-egg-count">0</span>/8</span>
+  </div>
   <div class="sp-inner">
     <div class="sp-header">
       <p class="sp-eyebrow">uma surpresa pra você</p>
@@ -1237,17 +1273,140 @@ body.dark .mood-inner{background:#1A1118}
   };
 
   // ═══════════════════════════════════════════
-  // ─── DAY 01: MEMORY GAME ───
+  // ─── SCORE + EASTER EGG SYSTEM ───
+  // ═══════════════════════════════════════════
+  const SCORE_KEY = 'gi_spoiler_score_v1';
+  
+  function loadScore(){
+    try {
+      const raw = localStorage.getItem(SCORE_KEY);
+      if(!raw) return { points: 0, eggs: [], unlocks: {} };
+      return JSON.parse(raw);
+    } catch(e){ return { points: 0, eggs: [], unlocks: {} }; }
+  }
+  
+  function saveScore(state){
+    try { localStorage.setItem(SCORE_KEY, JSON.stringify(state)); } catch(e){}
+  }
+  
+  function updateScoreBadge(){
+    const state = loadScore();
+    const badge = document.getElementById('sp-score-badge');
+    if(!badge) return;
+    badge.classList.add('on');
+    document.getElementById('sp-score-num').textContent = state.points;
+    document.getElementById('sp-egg-count').textContent = state.eggs.length;
+  }
+  
+  function addPoints(p, reason){
+    const state = loadScore();
+    state.points += p;
+    saveScore(state);
+    updateScoreBadge();
+    const badge = document.getElementById('sp-score-badge');
+    badge.classList.add('bump');
+    setTimeout(() => badge.classList.remove('bump'), 500);
+  }
+  
+  function findEgg(eggId, message){
+    const state = loadScore();
+    if(state.eggs.includes(eggId)) return false;
+    state.eggs.push(eggId);
+    state.points += 50;
+    saveScore(state);
+    updateScoreBadge();
+    showEggToast(message);
+    if(navigator.vibrate) navigator.vibrate([60, 30, 60, 30, 120]);
+    return true;
+  }
+  
+  function showEggToast(message){
+    const existing = document.querySelector('.sp-egg-toast');
+    if(existing) existing.remove();
+    const toast = document.createElement('div');
+    toast.className = 'sp-egg-toast';
+    toast.innerHTML = `<strong>🥚 Easter egg!</strong><br>${message}<br><span style="font-size:11px;opacity:.8">+50 pontos</span>`;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.classList.add('on'), 50);
+    setTimeout(() => {
+      toast.classList.remove('on');
+      setTimeout(() => toast.remove(), 500);
+    }, 4500);
+  }
+  
+  function unlockFeature(key){
+    const state = loadScore();
+    state.unlocks[key] = true;
+    saveScore(state);
+  }
+  
+  function isUnlocked(key){
+    return loadScore().unlocks[key] === true;
+  }
+  
+  // Show score badge on load (only if user has any points/eggs)
+  setTimeout(() => {
+    const state = loadScore();
+    if(state.points > 0 || state.eggs.length > 0){
+      updateScoreBadge();
+    }
+  }, 1000);
+  
+  window.openScorePanel = function(){
+    const state = loadScore();
+    const modal = document.getElementById('spoiler-modal');
+    const card = document.getElementById('sp-modal-card');
+    if(!modal || !card) return;
+    const eggList = [
+      'O coração escondido no título',
+      'A flor secreta no calendário',
+      'O número que pisca',
+      'A bolha de chat dupla',
+      'A estrela atrás da moeda',
+      'O nome escondido na frase',
+      'A vela que pulsa',
+      'O ponto fora da ordem',
+    ];
+    card.innerHTML = `
+      <p class="sp-modal-eyebrow">Seu painel</p>
+      <div class="sp-modal-icon">✨</div>
+      <h2 class="sp-modal-title">Você tem ${state.points} pontos.</h2>
+      <p class="sp-modal-text">Cada jogo dá pontos. Cada ovinho escondido vale 50. No dia 12, sua pontuação muda a mensagem final 😏</p>
+      <div style="text-align:left;background:rgba(0,0,0,.2);border-radius:12px;padding:14px 18px;margin:14px 0">
+        <p style="font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:rgba(255,255,255,.5);margin-bottom:10px;font-weight:500">🥚 ovinhos encontrados (${state.eggs.length}/8)</p>
+        ${eggList.map((e, i) => {
+          const found = state.eggs.includes('egg_' + (i+1));
+          return `<div style="padding:6px 0;font-size:13px;color:${found ? '#F5D0DC' : 'rgba(255,255,255,.35)'};border-bottom:1px solid rgba(255,255,255,.05)">
+            ${found ? '✓' : '·'} ${found ? e : '???'}
+          </div>`;
+        }).join('')}
+      </div>
+      <p style="font-size:12px;color:rgba(255,255,255,.5);text-align:center;font-style:italic;margin:10px 0">Tem ovinhos escondidos espalhados pelos jogos. Olha com atenção 👀</p>
+      <button class="sp-modal-close" onclick="closeSpoilerModal()">Fechar</button>
+    `;
+    modal.classList.add('on');
+  };
+  
+  // Expose for game functions
+  window.spAddPoints = addPoints;
+  window.spFindEgg = findEgg;
+  window.spUnlockFeature = unlockFeature;
+  window.spIsUnlocked = isUnlocked;
+
+  // ═══════════════════════════════════════════
+  // ─── DAY 01: MEMORY GAME (8 pairs + round 2) ───
   // ═══════════════════════════════════════════
   function buildMemoryHTML(nextCd, nextLabel){
     return `
       <p class="sp-modal-eyebrow">1 de junho · 18h</p>
       <div class="sp-modal-icon">🎴</div>
-      <h2 class="sp-modal-title">Jogo da memória.</h2>
-      <p class="sp-modal-text">Encontre todos os 6 pares. Cada par é uma coisa nossa.</p>
-      <div class="sp-mem-grid" id="sp-mem-grid"></div>
-      <p class="sp-mem-status" id="sp-mem-status">0 / 6 pares encontrados</p>
-      <p style="font-size:11px;color:rgba(255,255,255,.4);text-align:center;margin-bottom:10px">tente em ${nextCd ? '' : ''}menos de 20 tentativas 😏</p>
+      <h2 class="sp-modal-title">Jogo da memória<span class="sp-egg" onclick="window.spFindEgg('egg_1','Você achou o coração escondido!')" style="font-size:.5em;opacity:.15;margin-left:4px">♥</span>.</h2>
+      <p class="sp-modal-text">Encontre todos os 8 pares. Cada par é uma coisa nossa. <span style="color:#B8955A;font-style:italic">E tem uma rodada 2 quando você terminar.</span></p>
+      <div id="sp-mem-area">
+        <div class="sp-mem-grid" id="sp-mem-grid"></div>
+        <p class="sp-mem-status" id="sp-mem-status">0 / 8 pares encontrados · 0 tentativas</p>
+      </div>
+      <p style="font-size:11px;color:rgba(255,255,255,.4);text-align:center;margin-bottom:10px">menos tentativas = mais pontos 🎯</p>
       ${nextCd ? `<p class="sp-modal-next">próxima pista: ${nextLabel} (${nextCd})</p>` : `<p class="sp-modal-next">próxima: dia ${nextLabel} ✨</p>`}
       <button class="sp-modal-close" onclick="closeSpoilerModal()">Fechar ❤️</button>
     `;
@@ -1262,16 +1421,18 @@ body.dark .mood-inner{background:#1A1118}
       { id: 4, emoji: '👶', label: 'neném' },
       { id: 5, emoji: '🌹', label: 'rosa' },
       { id: 6, emoji: '💬', label: 'chat' },
+      { id: 7, emoji: '🎂', label: 'aniv' },
+      { id: 8, emoji: '😂', label: 'risadas' },
     ];
     let cards = [];
     PAIRS.forEach(p => { cards.push({...p, uid: p.id+'a'}); cards.push({...p, uid: p.id+'b'}); });
-    // shuffle
     for(let i = cards.length-1; i > 0; i--){
       const j = Math.floor(Math.random()*(i+1));
       [cards[i], cards[j]] = [cards[j], cards[i]];
     }
-    memState = { cards, flipped: [], matched: new Set(), tries: 0, busy: false };
+    memState = { cards, flipped: [], matched: new Set(), tries: 0, busy: false, round: 1 };
     const grid = document.getElementById('sp-mem-grid');
+    grid.style.gridTemplateColumns = 'repeat(4, 1fr)';
     grid.innerHTML = cards.map((c, i) => 
       `<button class="sp-mem-card" data-i="${i}" onclick="window.flipMemCard(${i})">
         <span class="face-back">?</span>
@@ -1292,21 +1453,18 @@ body.dark .mood-inner{background:#1A1118}
     if(memState.flipped.length === 2){
       memState.busy = true;
       memState.tries++;
+      const totalPairs = memState.round === 1 ? 8 : 4;
       const [a, b] = memState.flipped;
       if(memState.cards[a].id === memState.cards[b].id){
-        // Match!
         setTimeout(() => {
           document.querySelector(`.sp-mem-card[data-i="${a}"]`).classList.add('matched');
           document.querySelector(`.sp-mem-card[data-i="${b}"]`).classList.add('matched');
           memState.matched.add(memState.cards[a].id);
           memState.flipped = [];
           memState.busy = false;
-          document.getElementById('sp-mem-status').textContent = `${memState.matched.size} / 6 pares encontrados`;
-          if(memState.matched.size === 6){
-            setTimeout(() => {
-              document.getElementById('sp-mem-status').innerHTML = `<span style="color:#F5D0DC;font-family:'Playfair Display',serif;font-style:italic;font-size:16px">Você conseguiu em ${memState.tries} tentativas! 🌹<br><span style="font-size:13px;font-style:normal;color:rgba(255,255,255,.6)">6 pares. 6 coisas que mais aparecem entre nós. Não é coincidência.</span></span>`;
-              if(navigator.vibrate) navigator.vibrate([60, 30, 60, 30, 100]);
-            }, 400);
+          document.getElementById('sp-mem-status').textContent = `${memState.matched.size} / ${totalPairs} pares · ${memState.tries} tentativas`;
+          if(memState.matched.size === totalPairs){
+            setTimeout(() => completeMemRound(), 500);
           }
         }, 400);
       } else {
@@ -1319,6 +1477,62 @@ body.dark .mood-inner{background:#1A1118}
       }
     }
   };
+  
+  function completeMemRound(){
+    if(memState.round === 1){
+      // Score: less tries = more points
+      const earned = Math.max(20, 100 - memState.tries * 3);
+      spAddPoints(earned, 'memory_r1');
+      // Round 2: phrases
+      const area = document.getElementById('sp-mem-area');
+      area.innerHTML = `
+        <div class="sp-round-banner">🎯 Rodada 2: pares de frases reais</div>
+        <p style="font-size:12px;color:rgba(255,255,255,.6);text-align:center;margin-bottom:14px">Achou 8 pares em ${memState.tries} tentativas! +${earned} pontos.<br>Agora 4 pares — quem disse essa frase?</p>
+        <div class="sp-mem-grid" id="sp-mem-grid" style="grid-template-columns:repeat(2,1fr)"></div>
+        <p class="sp-mem-status" id="sp-mem-status">0 / 4 pares</p>
+      `;
+      // Build phrase pairs — match phrase to author
+      const PHRASE_PAIRS = [
+        { id: 1, txt: 'Te amoooo ❤️', who: 'sergio' },
+        { id: 2, txt: 'BOA NOITE MEU LINDOOOOOOOOOOO', who: 'gi' },
+        { id: 3, txt: 'Dengoooooo', who: 'sergio' },
+        { id: 4, txt: 'oii moooo', who: 'gi' },
+      ];
+      let cards = [];
+      PHRASE_PAIRS.forEach(p => {
+        cards.push({ id: p.id, emoji: '"'+p.txt+'"', uid: p.id+'p' });
+        cards.push({ id: p.id, emoji: p.who === 'sergio' ? '🧔 SÉRGIO' : '👧 GI', uid: p.id+'a' });
+      });
+      for(let i = cards.length-1; i > 0; i--){
+        const j = Math.floor(Math.random()*(i+1));
+        [cards[i], cards[j]] = [cards[j], cards[i]];
+      }
+      memState = { cards, flipped: [], matched: new Set(), tries: 0, busy: false, round: 2 };
+      const grid = document.getElementById('sp-mem-grid');
+      grid.innerHTML = cards.map((c, i) => 
+        `<button class="sp-mem-card" data-i="${i}" onclick="window.flipMemCard(${i})" style="font-size:12px;padding:8px;text-align:center;line-height:1.3;aspect-ratio:auto;min-height:60px">
+          <span class="face-back">?</span>
+          <span class="face-front">${c.emoji}</span>
+        </button>`
+      ).join('');
+      // Easter egg: 7º round 2 click
+      window._memR2Clicks = 0;
+    } else {
+      // Round 2 done
+      const earned = Math.max(15, 60 - memState.tries * 2);
+      spAddPoints(earned, 'memory_r2');
+      const area = document.getElementById('sp-mem-area');
+      area.innerHTML = `
+        <div class="sp-round-banner">🏆 Você terminou as duas rodadas!</div>
+        <p style="font-size:14px;color:#F5D0DC;text-align:center;font-style:italic;font-family:'Playfair Display',serif;line-height:1.6">
+          12 pares no total. ${memState.tries} tentativas na rodada 2.<br>
+          <span style="font-size:13px;color:rgba(255,255,255,.6);font-style:normal;font-family:'DM Sans',sans-serif">+${earned} pontos · 4 frases reais que tu já leu antes</span>
+        </p>`;
+      if(navigator.vibrate) navigator.vibrate([60, 30, 60, 30, 120]);
+      // Find egg 1 if user clicked the title heart
+      // (handled separately)
+    }
+  }
 
   // ═══════════════════════════════════════════
   // ─── DAY 02: COIN FLIP ───
@@ -1358,7 +1572,7 @@ body.dark .mood-inner{background:#1A1118}
     return `
       <p class="sp-modal-eyebrow">2 de junho · 18h</p>
       <div class="sp-modal-icon">🪙</div>
-      <h2 class="sp-modal-title">Cara ou coroa?</h2>
+      <h2 class="sp-modal-title">Cara ou coroa<span class="sp-egg" onclick="window.spFindEgg('egg_5','Você achou a estrela atrás da moeda!')" style="font-size:.5em;opacity:.15;margin-left:4px">★</span>?</h2>
       <p class="sp-modal-text">Vou te dar 5 chances. Cada giro revela alguma coisa — Cara é dica de verdade, Coroa é o que NÃO é. Mas atenção: <strong style="color:#F5D0DC">só pode jogar uma vez por dia</strong>, mesmo se você recarregar 😏</p>
       <div class="sp-coin"><div class="sp-coin-inner" id="sp-coin-inner">
         <div class="sp-coin-face heads">★</div>
@@ -1462,6 +1676,7 @@ body.dark .mood-inner{background:#1A1118}
       state.history.push({ heads: isHeads, msg });
       state.flips++;
       saveCoinState(state);
+      spAddPoints(isHeads ? 15 : 8, 'coin_' + (isHeads ? 'h' : 't'));
       
       // Update history display
       restoreCoinHistory();
@@ -1482,7 +1697,7 @@ body.dark .mood-inner{background:#1A1118}
     return `
       <p class="sp-modal-eyebrow">4 de junho · 18h</p>
       <div class="sp-modal-icon">🔤</div>
-      <h2 class="sp-modal-title">Termo do casal.</h2>
+      <h2 class="sp-modal-title">Termo do casal<span class="sp-egg" onclick="window.spFindEgg('egg_3','Você achou o número que pisca!')" style="font-size:.4em;opacity:.15;margin-left:4px;animation:pulse 2s infinite">3</span>.</h2>
       <p class="sp-modal-text">5 letras. 6 tentativas. É uma palavra que importa muito pra gente.</p>
       <div class="sp-wordle-board" id="sp-wordle-board"></div>
       <p class="sp-wordle-hint" id="sp-wordle-hint">tenta uma palavra qualquer pra começar...</p>
@@ -1591,7 +1806,11 @@ body.dark .mood-inner{background:#1A1118}
     setTimeout(() => {
       if(guess === answer){
         wordleState.done = true;
-        hint.innerHTML = `<strong style="color:#F5D0DC;font-family:'Playfair Display',serif;font-style:italic;font-size:16px">Acertou! 🌹 "${answer}" — palavra que apareceu <strong>5.544 vezes</strong> entre nós.</strong>`;
+        const triesUsed = wordleState.currentRow + 1;
+        const earned = Math.max(30, 120 - triesUsed * 15);
+        spAddPoints(earned, 'wordle');
+        spUnlockFeature('whosaid_bonus');
+        hint.innerHTML = `<strong style="color:#F5D0DC;font-family:'Playfair Display',serif;font-style:italic;font-size:16px">Acertou em ${triesUsed} tentativas! 🌹 "${answer}" apareceu <strong>5.544 vezes</strong> entre nós.</strong><br><span style="color:#B8955A;font-size:12px;font-style:italic">+${earned} pontos · 🔓 desbloqueou modo difícil em "Quem disse"</span>`;
         if(navigator.vibrate) navigator.vibrate([80, 40, 80, 40, 120]);
       } else if(wordleState.currentRow >= 5){
         wordleState.done = true;
@@ -1658,43 +1877,59 @@ body.dark .mood-inner{background:#1A1118}
   };
 
   // ═══════════════════════════════════════════
-  // ─── DAY 06: WHO SAID IT ───
+  // ─── DAY 06: WHO SAID IT (10 phrases + year round) ───
   // ═══════════════════════════════════════════
   const WHO_PHRASES = [
-    { id: 1, text: 'OO MDS Q COISA MAI LINDA DA GIGI', author: 'g' },
-    { id: 2, text: 'Te amoooo ❤️', author: 's' },
-    { id: 3, text: 'nenemmmmm vem aqui', author: 'g' },
-    { id: 4, text: 'Dengoooooo', author: 's' },
-    { id: 5, text: 'moooo vem aqui ja', author: 'g' },
-    { id: 6, text: 'Lindaaaaaa do meu coração', author: 's' },
+    { id: 1, text: 'OO MDS Q COISA MAI LINDA DA GIGI', author: 'g', year: '2024' },
+    { id: 2, text: 'Te amoooo ❤️', author: 's', year: '2024' },
+    { id: 3, text: 'nenemmmmm vem aqui', author: 'g', year: '2024' },
+    { id: 4, text: 'Dengoooooo', author: 's', year: '2024' },
+    { id: 5, text: 'moooo vem aqui ja', author: 'g', year: '2025' },
+    { id: 6, text: 'Lindaaaaaa do meu coração', author: 's', year: '2024' },
+    { id: 7, text: 'BOA NOITE MEU LINDOOOOOOOOOOO', author: 'g', year: '2024' },
+    { id: 8, text: 'vai fazer oq de bommmmmm', author: 's', year: '2025' },
+    { id: 9, text: 'amorrr q saudade', author: 'g', year: '2024' },
+    { id: 10, text: 'Mooooo linda', author: 's', year: '2025' },
   ];
   let whoSaidState = null;
   
   function buildWhoSaidHTML(nextCd, nextLabel){
+    const bonus = isUnlocked('whosaid_bonus');
     return `
       <p class="sp-modal-eyebrow">6 de junho · 18h</p>
       <div class="sp-modal-icon">👀</div>
-      <h2 class="sp-modal-title">Quem disse o quê?</h2>
-      <p class="sp-modal-text">Arrasta cada frase pra coluna certa. Tudo isso a gente já disse — de verdade.</p>
-      <div id="sp-whosaid-phrases"></div>
-      <div class="sp-whosaid-zones">
-        <div class="sp-whosaid-zone s" data-zone="s" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="window.whoSaidDrop(event,'s')">
-          <p class="sp-whosaid-zone-title">SÉRGIO</p>
-          <div id="sp-whosaid-drops-s"></div>
+      <h2 class="sp-modal-title">Quem disse o quê<span class="sp-egg" onclick="window.spFindEgg('egg_4','Você achou a bolha dupla!')" style="font-size:.5em;opacity:.15;margin-left:4px">💬</span>?</h2>
+      <p class="sp-modal-text">Arrasta cada frase pra coluna certa. ${bonus ? '<span style="color:#B8955A;font-weight:500">10 frases (você desbloqueou as 4 bônus pelo Termo).</span>' : '6 frases.'} <span style="color:#F5D0DC">Depois tem rodada 2: qual ano?</span></p>
+      <div id="sp-whosaid-area">
+        <div id="sp-whosaid-phrases"></div>
+        <div class="sp-whosaid-zones">
+          <div class="sp-whosaid-zone s" data-zone="s" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="window.whoSaidDrop(event,'s')">
+            <p class="sp-whosaid-zone-title">SÉRGIO</p>
+            <div id="sp-whosaid-drops-s"></div>
+          </div>
+          <div class="sp-whosaid-zone g" data-zone="g" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="window.whoSaidDrop(event,'g')">
+            <p class="sp-whosaid-zone-title">GI</p>
+            <div id="sp-whosaid-drops-g"></div>
+          </div>
         </div>
-        <div class="sp-whosaid-zone g" data-zone="g" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="window.whoSaidDrop(event,'g')">
-          <p class="sp-whosaid-zone-title">GI</p>
-          <div id="sp-whosaid-drops-g"></div>
-        </div>
+        <p class="sp-whosaid-result" id="sp-whosaid-result"></p>
       </div>
-      <p class="sp-whosaid-result" id="sp-whosaid-result"></p>
       ${nextCd ? `<p class="sp-modal-next">próxima pista: ${nextLabel} (${nextCd})</p>` : `<p class="sp-modal-next">próxima: dia ${nextLabel} ✨</p>`}
       <button class="sp-modal-close" onclick="closeSpoilerModal()">Fechar ❤️</button>
     `;
   }
   
   function initWhoSaid(){
-    whoSaidState = { remaining: [...WHO_PHRASES].sort(() => Math.random() - 0.5), placed: { s: [], g: [] }, correct: 0, total: WHO_PHRASES.length };
+    const useAll = isUnlocked('whosaid_bonus');
+    const pool = useAll ? WHO_PHRASES : WHO_PHRASES.slice(0, 6);
+    whoSaidState = { 
+      remaining: [...pool].sort(() => Math.random() - 0.5), 
+      placed: { s: [], g: [] }, 
+      correct: 0, 
+      total: pool.length, 
+      round: 1,
+      placedHistory: []
+    };
     renderWhoSaid();
   }
   
@@ -1723,6 +1958,7 @@ body.dark .mood-inner{background:#1A1118}
     const correct = phrase.author === zone;
     if(correct) whoSaidState.correct++;
     whoSaidState.placed[zone].push({ ...phrase, correct });
+    whoSaidState.placedHistory.push({ phrase, picked: zone, correct });
     whoSaidState.remaining = whoSaidState.remaining.filter(p => p.id !== id);
     
     const dropArea = document.getElementById('sp-whosaid-drops-' + zone);
@@ -1732,26 +1968,83 @@ body.dark .mood-inner{background:#1A1118}
     if(navigator.vibrate) navigator.vibrate(correct ? 30 : [40, 20, 40]);
     
     if(whoSaidState.remaining.length === 0){
-      const result = document.getElementById('sp-whosaid-result');
-      if(whoSaidState.correct === whoSaidState.total){
-        result.innerHTML = '🌹 Você acertou TODAS! Conhece a gente bem demais. Todas essas frases são reais.';
-      } else {
-        result.innerHTML = `Acertou ${whoSaidState.correct}/${whoSaidState.total}. Quase! Mas todas as frases acima são reais. ❤️`;
-      }
+      completeWhoSaidR1();
     }
   };
   
-  // Click-fallback for touch devices (mobile)
+  function completeWhoSaidR1(){
+    const earned = whoSaidState.correct * 10;
+    spAddPoints(earned, 'whosaid_r1');
+    const result = document.getElementById('sp-whosaid-result');
+    if(whoSaidState.correct === whoSaidState.total){
+      result.innerHTML = `🌹 Você acertou TODAS as ${whoSaidState.total}! +${earned} pontos.`;
+    } else {
+      result.innerHTML = `Acertou ${whoSaidState.correct}/${whoSaidState.total} · +${earned} pontos.`;
+    }
+    // Round 2: in which year was this said?
+    setTimeout(() => {
+      whoSaidState.round = 2;
+      whoSaidState.yearIdx = 0;
+      whoSaidState.yearCorrect = 0;
+      // Pick 4 random phrases for year round
+      whoSaidState.yearPhrases = [...WHO_PHRASES].sort(() => Math.random() - 0.5).slice(0, 4);
+      showYearRound();
+    }, 1500);
+  }
+  
+  function showYearRound(){
+    const area = document.getElementById('sp-whosaid-area');
+    const p = whoSaidState.yearPhrases[whoSaidState.yearIdx];
+    if(!p){
+      // done
+      const earned2 = whoSaidState.yearCorrect * 15;
+      spAddPoints(earned2, 'whosaid_r2');
+      area.innerHTML = `
+        <div class="sp-round-banner">🏆 Você completou as duas rodadas</div>
+        <p style="font-size:14px;color:#F5D0DC;text-align:center;font-style:italic;font-family:'Playfair Display',serif;line-height:1.6">
+          Rodada 2: ${whoSaidState.yearCorrect}/4 anos certos.<br>
+          <span style="font-size:13px;color:rgba(255,255,255,.6);font-style:normal;font-family:'DM Sans',sans-serif">+${earned2} pontos · Você lembra de coisas que eu nem lembrava</span>
+        </p>`;
+      if(navigator.vibrate) navigator.vibrate([60, 30, 60, 30, 120]);
+      return;
+    }
+    area.innerHTML = `
+      <div class="sp-round-banner">🎯 Rodada 2 · Frase ${whoSaidState.yearIdx + 1} / ${whoSaidState.yearPhrases.length}</div>
+      <p style="text-align:center;font-size:13px;color:rgba(255,255,255,.6);margin-bottom:10px">Em que ano essa frase foi dita?</p>
+      <div style="background:rgba(194,71,107,.1);border-left:3px solid #C2476B;border-radius:10px;padding:14px 18px;margin:16px 0;font-family:'Playfair Display',serif;font-style:italic;font-size:16px;color:#F5D0DC;text-align:center">"${p.text}"</div>
+      <div class="sp-year-pick">
+        <button class="sp-year-btn" data-y="2023" onclick="window.pickYear('2023')">2023</button>
+        <button class="sp-year-btn" data-y="2024" onclick="window.pickYear('2024')">2024</button>
+        <button class="sp-year-btn" data-y="2025" onclick="window.pickYear('2025')">2025</button>
+        <button class="sp-year-btn" data-y="2026" onclick="window.pickYear('2026')">2026</button>
+      </div>
+    `;
+  }
+  
+  window.pickYear = function(y){
+    const p = whoSaidState.yearPhrases[whoSaidState.yearIdx];
+    const correct = p.year === y;
+    document.querySelectorAll('.sp-year-btn').forEach(b => {
+      b.disabled = true;
+      if(b.dataset.y === p.year) b.classList.add('correct');
+      else if(b.dataset.y === y && !correct) b.classList.add('wrong');
+    });
+    if(correct) whoSaidState.yearCorrect++;
+    if(navigator.vibrate) navigator.vibrate(correct ? 30 : [40, 20, 40]);
+    setTimeout(() => {
+      whoSaidState.yearIdx++;
+      showYearRound();
+    }, 1500);
+  };
+  
   let whoSaidSelected = null;
   window.whoSaidClickHint = function(id){
-    // Touch devices: highlight selected, then user taps the zone
     const phrase = document.querySelector(`.sp-whosaid-phrase[data-id="${id}"]`);
     if(!phrase) return;
     document.querySelectorAll('.sp-whosaid-phrase').forEach(p => p.style.background = '');
     if(whoSaidSelected === id){ whoSaidSelected = null; return; }
     phrase.style.background = 'rgba(194,71,107,.25)';
     whoSaidSelected = id;
-    // attach single-tap to zones
     document.querySelectorAll('.sp-whosaid-zone').forEach(z => {
       z.onclick = function(){
         if(!whoSaidSelected) return;
@@ -1773,7 +2066,7 @@ body.dark .mood-inner{background:#1A1118}
     return `
       <p class="sp-modal-eyebrow">8 de junho · 18h</p>
       <div class="sp-modal-icon">🕯️</div>
-      <h2 class="sp-modal-title">Quase aniversário.</h2>
+      <h2 class="sp-modal-title">Quase aniversário<span class="sp-egg" onclick="window.spFindEgg('egg_7','Você achou a vela que pulsa!')" style="font-size:.5em;opacity:.2;margin-left:4px;animation:pulse 1.5s infinite">🕯</span>.</h2>
       <p class="sp-modal-text">Amanhã você faz mais um ano. Toca em cada velinha pra acender — depois faz seu pedido.</p>
       <div class="sp-candles-wrap">
         <div class="sp-candles" id="sp-candles">
@@ -1822,6 +2115,7 @@ body.dark .mood-inner{background:#1A1118}
     });
     input.style.display = 'none';
     document.getElementById('sp-wish-confirm').innerHTML = `Pedido feito ✨<br><span style="font-size:13px;color:rgba(255,255,255,.6);font-family:'DM Sans',sans-serif;font-style:normal">Eu não vou ler. Mas torço pra ele se realizar.<br>Boa noite, aniversariante quase oficial 🌙</span>`;
+    spAddPoints(40, 'candles');
     if(navigator.vibrate) navigator.vibrate([60, 30, 60, 30, 100]);
   };
 
@@ -1910,6 +2204,7 @@ Te amo, hoje e sempre.
           }
         }
         typeChar();
+        spAddPoints(80, 'gift');
         if(navigator.vibrate) navigator.vibrate([80, 40, 80, 40, 80, 40, 150]);
       }, 700);
     }
@@ -1939,7 +2234,7 @@ Te amo, hoje e sempre.
     return `
       <p class="sp-modal-eyebrow">10 de junho · 18h</p>
       <div class="sp-modal-icon">✏️</div>
-      <h2 class="sp-modal-title">Conecte os pontos.</h2>
+      <h2 class="sp-modal-title">Conecte os pontos<span class="sp-egg" onclick="window.spFindEgg('egg_8','Você achou o ponto fora da ordem!')" style="font-size:.5em;opacity:.15;margin-left:4px">·</span>.</h2>
       <p class="sp-modal-text">12 pontos. 12 dias é o dia D. Clica na ordem (1, 2, 3...) e veja o que aparece.</p>
       <canvas class="sp-dots-canvas" id="sp-dots-canvas" width="340" height="340"></canvas>
       <p class="sp-dots-status" id="sp-dots-status">clica no ponto 1 pra começar</p>
@@ -1985,6 +2280,7 @@ Te amo, hoje e sempre.
             ctx.fillStyle = 'rgba(194,71,107,.25)';
             ctx.fill();
             status.innerHTML = `<span style="color:#F5D0DC;font-family:'Playfair Display',serif;font-style:italic;font-size:16px">Você desenhou o que vem 💗<br><span style="font-size:13px;font-style:normal;color:rgba(255,255,255,.6)">12 pontos. Faltam 2 dias.</span></span>`;
+            spAddPoints(50, 'dots');
             if(navigator.vibrate) navigator.vibrate([60, 30, 60, 30, 120]);
           } else {
             status.textContent = `clica no ponto ${dotsConnected + 1}...`;
@@ -2065,7 +2361,7 @@ Te amo, hoje e sempre.
     return `
       <p class="sp-modal-eyebrow">3 de junho · 18h</p>
       <div class="sp-modal-icon">🔮</div>
-      <h2 class="sp-modal-title">A profecia em fragmentos.</h2>
+      <h2 class="sp-modal-title">A profecia em fragmentos<span class="sp-egg" onclick="window.spFindEgg('egg_2','Você achou a flor secreta!')" style="font-size:.5em;opacity:.15;margin-left:4px">❀</span>.</h2>
       <p class="sp-modal-text">Algumas palavras estão escondidas. Toca em cada espaço pra escolher o que cabe ali. Erre quantas vezes quiser — eu só conto se acertar.</p>
       <div class="sp-prophecy" id="sp-prophecy">
         Em <span class="sp-prophecy-blank" data-i="0">um mês</span>, às <span class="sp-prophecy-blank" data-i="1">uma hora</span>, aconteceu algo entre nós. 
@@ -2134,6 +2430,7 @@ Te amo, hoje e sempre.
           const final = document.getElementById('sp-prophecy-final');
           final.innerHTML = `Você reconstruiu a profecia.<br><span style="color:rgba(255,255,255,.5);font-size:12px;font-style:normal">Mas o que ela significa, só dia 12. ✨</span>`;
           final.classList.add('on');
+          spAddPoints(60, 'prophecy');
           if(navigator.vibrate) navigator.vibrate([60, 30, 80]);
         }, 400);
       }
@@ -2162,7 +2459,7 @@ Te amo, hoje e sempre.
     return `
       <p class="sp-modal-eyebrow">7 de junho · 18h</p>
       <div class="sp-modal-icon">🔦</div>
-      <h2 class="sp-modal-title">O que tem no escuro.</h2>
+      <h2 class="sp-modal-title">O que tem no escuro<span class="sp-egg" onclick="window.spFindEgg('egg_6','Você achou o nome escondido!')" style="font-size:.5em;opacity:.15;margin-left:4px">G</span>.</h2>
       <p class="sp-modal-text">Tem 6 coisas escondidas aí dentro. Use o mouse (ou o dedo) como lanterna pra encontrar.</p>
       <div class="sp-flash-stage" id="sp-flash-stage">
         <p class="sp-flash-hint">passe o dedo pela tela →</p>
@@ -2208,6 +2505,7 @@ Te amo, hoje e sempre.
             setTimeout(() => {
               document.getElementById('sp-flash-revealed').classList.add('on');
               document.getElementById('sp-flash-counter').textContent = 'Todos encontrados ✨';
+              spAddPoints(60, 'flashlight');
               if(navigator.vibrate) navigator.vibrate([60, 30, 60, 30, 100]);
             }, 600);
           }
